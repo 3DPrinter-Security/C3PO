@@ -1,0 +1,17 @@
+Required packages:
+- python
+- pip
+  -- inquirer
+  -- nmap
+  -- tenable_io
+  -- scapy
+  -- subprocess
+  -- paramiko
+  -- requests
+  -- functools
+- g++
+- openjdk-8-jdk
+- bison
+- flex
+- graphviz
+- texlive-font-utils

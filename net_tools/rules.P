@@ -1,0 +1,525 @@
+/*************************/
+/*Predicates declarations*/
+/*************************/
+primitive(attackerLocated(_host)).
+primitive(hacl(_src, _dst, _prot, _port)).
+primitive(vulExists(_host, _vulID, _program)).
+primitive(vulProperty(_vulID, _range, _consequence)).
+primitive(networkServiceInfo(_host, _program, _protocol, _port)).
+primitive(canAccessFile(_host, _user, _path)). %need permisisons?
+primitive(localFileProtection(_host, _user, _access, _path)).
+primitive(clientProgram(_host, _programname)).
+primitive(hasAccount(_principal, _host, _account)).
+primitive(vulExists(_machine, _vulID, _program, _range, _consequence)).
+primitive(installed(_host, _program)).
+meta(cvss(_vulID, _ac)).
+
+primitive(sendsFile(_hostTX, _hostRX, _fileName, _program)).
+primitive(listenForFiles(_host, _program)).
+primitive(progRunning(_program, _host)).
+primitive(networkHardware(_host)).
+
+derived(execCode(_src, _victim, _perm)).
+derived(netAccess(_host, _tgt, _protocol, _port)).
+derived(canAccessHost(_host, _src)).
+derived(accessFile(_machine, _filepath)).
+derived(accessMaliciousInput(_host, _principal, _program)).
+derived(principalCompromised(_victim)).
+derived(logInService(_host, _protocol, _port)).
+derived(pivotPoint(_h1,_h2)).
+derived(firstHop(_h1,_h2)).
+derived(sameSwitch(_h1,_h2)).
+derived(multiHop(_h1,_h2)).
+derived(canReceiveFile(_hostRX, _fileName, _hostTX)).
+derived(canSendFile(_src, _tgtHost, _program)).
+derived(canDoS(_src, _tgtHost, _program)).
+derived(dataTransitsThrough(_host1, _fileName)).
+derived(manInTheMiddle(_host, _sender, _receiver)).
+
+/*Overarching Attacker Goals*/
+derived(vulnerableToMakingDefectiveParts(_victim, _src)).
+derived(vulnerableToDataExfiltration(_victim, _src)).
+derived(vulnerableToDoS(_victim, _src)).
+
+meta(attackGoal(_)).
+meta(advances(_,_)).
+meta(notSame(_h1,_h2)).
+meta(notNetDev(_h)).
+
+/**********************/
+/* Tabling predicates */
+/**********************/
+:- table vulExists/5.
+:- table firstHop/2.
+:- table sameSwitch/2.
+:- table multiHop/2.
+:- table execCode/3.
+:- table pivotPoint/2.
+:- table netAccess/4.
+:- table canSendFile/3.
+:- table canReceiveFile/3.
+:- table canDoS/3.
+:- table dataTransitsThrough/2.
+:- table manInTheMiddle/3.
+:- table canAccessHost/2.
+:- table canAccessFile/3.
+:- table accessFile/2.
+:- table principalCompromised/1.
+
+
+
+/*********************/
+/* interaction rules */
+/*********************/
+
+/* Not the same check */
+/**********************/
+notSame(H1, H2) :- constraintLib:when((ground(H1), ground(H2)), H1 \== H2).
+
+notNetDev(H) :- constraintLib:when((ground(H)), \+ networkHardware(H)).
+
+/* First hop */
+/*************/
+interaction_rule(
+  (firstHop(H1,H2) :-
+    hacl(H1,H2,_Protocol,_Port), hacl(H2,H1,_Protocol,_Port)),
+  rule_desc('first hop of network traffic', 1.0)).
+
+/* same switch */
+/***************/
+interaction_rule(
+  (sameSwitch(H1,H2) :-
+    notSame(H1,H2),
+    notSame(H1, Intermediary), notSame(H2, Intermediary),
+    networkHardware(Intermediary), notNetDev(H1), notNetDev(H2),
+    hacl(H1,Intermediary,_Protocol,_Port), hacl(Intermedieary,H1,_Protocol,_Port),
+    hacl(H2,Intermediary,_Protocol,_Port), hacl(Intermedieary,H2,_Protocol,_Port)),
+  rule_desc('on same network switch', 1.3)).
+
+/* Multi-Hop */
+/*************/
+
+interaction_rule(
+  (multiHop(Src,Tgt) :-
+    notSame(Src,Tgt),
+    notSame(Src, Intermediary),
+    notSame(Src, Intermediary2), notSame(Tgt, Intermediary),
+    notSame(Tgt, Intermediary2), notSame(Intermediary, Intermediary2),
+    networkHardware(Intermediary), networkHardware(Intermediary2),
+    notNetDev(Src), notNetDev(Tgt),
+    hacl(Src,Intermediary,_Protocol,_Port), hacl(Intermediary,Src,_Protocol,_Port),
+    hacl(Intermediary,Intermediary2,_Protocol,_Port), hacl(Intermediary,Intermediary2,_Protocol,_Port),
+    hacl(Tgt,Intermediary2,_Protocol,_Port), hacl(Intermediary2, Tgt,_Protocol,_Port)),
+  rule_desc('multi-hop between switches', 1.0)).
+
+interaction_rule(
+  (multiHop(Src,Tgt) :-
+    notSame(Src,Tgt), notSame(Src, Intermediary), notSame(Src, Intermediary2),
+    notSame(Src, Intermediary3), notSame(Tgt, Intermediary),
+    notSame(Tgt, Intermediary2), notSame(Tgt, Intermediary3),
+    notSame(Intermediary, Intermediary2), notSame(Intermediary2, Intermediary3),
+    notSame(Intermediary, Intermediary3),
+    notNetDev(Src), notNetDev(Tgt),
+    networkHardware(Intermediary), networkHardware(Intermediary2),
+    networkHardware(Intermediary3),
+    hacl(Src,Intermediary,_Protocol,_Port), hacl(Intermediary,Src,_Protocol,_Port),
+    hacl(Intermediary,Intermediary2,_Protocol,_Port), hacl(Intermediary2,Intermediary,_Protocol,_Port),
+    hacl(Intermediary2,Intermediary3,_Protocol,_Port), hacl(Intermediary3,Intermediary2,_Protocol,_Port),
+    hacl(Tgt,Intermediary3,_Protocol,_Port), hacl(Intermediary3, Tgt,_Protocol,_Port)),
+  rule_desc('multi-hop between switches', 1.0)).
+
+/* Ability to execute Code */
+/***************************/
+interaction_rule(
+  (execCode(Victim, Host, Perm) :-
+    principalCompromised(Victim),
+    hasAccount(Victim, Host, Perm),
+    canAccessHost(Host, Victim)),
+  rule_desc('When a principal is compromised any machine he has an account on will also be compromised', 0.5)).
+
+interaction_rule(
+  (execCode(Src, H, Perm) :-
+    vulExists(H, _, Software, remoteExploit, privEscalation),
+    networkServiceInfo(H, Software, Protocol, Port),
+    netAccess(Src ,H, Protocol, Port)),
+  rule_desc('remote exploit of a server program', 1.0)).
+
+interaction_rule(
+  (execCode(Victim, H, Perm) :-
+    vulExists(H, _, Software, remoteClient, privEscalation),
+    hasAccount(Victim, H, Perm),
+    accessMaliciousInput(H, Victim, Software)),
+  rule_desc('remote exploit for a client program', 0.5)).		 
+
+interaction_rule(
+  (execCode(Src, H, Perm) :-
+    vulExists(H, _, Software, remoteExploit, privEscalation),
+    installed(H, Software),
+    netAccess(Src, H, _, _)),
+  rule_desc('remote exploit of host', 2.0)).
+
+/* netAccess */
+/*************/
+
+interaction_rule(
+  (netAccess(H, Tgt, _Protocol, _Port) :-
+    firstHop(H, Tgt)),
+  rule_desc('network access-first hop', 1.0)).
+
+interaction_rule(
+  (netAccess(H, Tgt, Protocol, Port) :-
+    sameSwitch(H, Tgt)),
+  rule_desc('network access via same switch', 1.0)).
+
+interaction_rule(
+  (netAccess(H, Tgt, Protocol, Port) :-
+    multiHop(H,Tgt)),
+  rule_desc('network multiple switches', 1.0)).
+
+interaction_rule(
+  (netAccess(H, Tgt, Protocol, _Port) :-
+    notSame(H,Tgt),
+    notSame(H,Intermediary), notSame(Tgt,Intermediary),
+    firstHop(H, Intermediary),
+    pivotPoint(Intermediary, Tgt)),
+  rule_desc('network access via pivot point', 1.0)).
+
+interaction_rule(
+  (netAccess(H, Tgt, _Protocol, _Port) :-
+    notSame(H,Tgt),
+    notSame(H,Intermediary), notSame(Tgt,Intermediary),
+    sameSwitch(H, Intermediary),
+    pivotPoint(Intermediary, Tgt)),
+  rule_desc('network access via pivot point', 1.0)).
+
+interaction_rule(
+  (netAccess(H, Tgt, _Protocol, _Port) :-
+    notSame(H,Tgt),
+    notSame(H,Intermediary), notSame(Tgt,Intermediary),
+    multiHop(H, Intermediary),
+    pivotPoint(Intermediary, Tgt)),
+  rule_desc('network access via pivot point', 1.0)).
+
+/* pivotPoint */
+/**************/
+
+interaction_rule(
+  (pivotPoint(Src, Tgt):-
+    execCode(_,Src, _Perm),
+    firstHop(Src, Tgt)),
+  rule_desc('direct access to pivot point', 1.0)).
+
+interaction_rule(
+  (pivotPoint(Src, Tgt):-
+    execCode(_,Src, _Perm),
+    sameSwitch(Src, Tgt)),
+  rule_desc('same switch from pivot point', 1.0)).
+
+interaction_rule(
+  (pivotPoint(Src, Tgt):-
+    execCode(_,Src, _Perm),
+    multiHop(Src, Tgt)),
+  rule_desc('multiple switches to pivot point', 1.0)).
+
+interaction_rule(
+  (pivotPoint(Src, Tgt):-
+    execCode(_,Src, _Perm),
+    multiHop(Src, Intermediary),
+    execCode(Src, Intermediary, _Perm),
+    sameSwitch(Intermediary, Tgt)),
+  rule_desc('dual pivot -- same switch', 2.0)).
+
+interaction_rule(
+  (pivotPoint(Src, Tgt):-
+    execCode(_,Src, _Perm),
+    multiHop(Src, Intermediary),
+    execCode(Src, Intermediary, _Perm),
+    multiHop(Intermediary, Tgt)),
+  rule_desc('dual pivot -- multiple switches', 2.0)).
+
+/* canAccessHost */
+/*****************/
+interaction_rule(
+  (canAccessHost(H, Atk) :-
+    execCode(Atk, H, _Perm)),
+  rule_desc('Access a host through executing code on the machine', 1.0)).
+
+interaction_rule(
+  (canAccessHost(H, Atk) :-
+    logInService(H, Protocol, Port),
+    netAccess(Atk ,H, Protocol, Port)),
+  rule_desc('Access a host through a log-in service')).
+
+/* accessFile */
+/**************/
+% Should this include file permissions as well?
+interaction_rule(
+  (accessFile(H, Path) :-
+    execCode(_,H, Usr),
+    canAccessFile(H, Usr, Path)), 
+  rule_desc('execCode implies file access', 1.0)).
+
+interaction_rule(
+  (accessFile(H, FileName) :-
+    execCode(_,H, Usr),
+    dataTransitsThrough(H, FileName)),
+  rule_desc('Access to files going through compromised host', 1.0)).
+
+/* principalCompromised */
+/************************/
+%principal == user account credentials
+interaction_rule(
+  (principalCompromised(Victim) :-
+    hasAccount(Victim, H, _Perm),
+    execCode(Victim, H, root)),
+  rule_desc('password sniffing', 0.8)).
+
+interaction_rule(
+  (principalCompromised(Victim) :-
+    hasAccount(Victim, H, User),
+    execCode(Victim, H, root)),
+  rule_desc('password sniffing', 0.8)).
+		 
+/* vulExists */
+/*************/
+interaction_rule(
+  (vulExists(H, ID, Sw, Range, Consequence) :-
+    vulExists(H, ID, Sw),
+    vulProperty(ID, Range, Consequence)),
+ rule_desc('', 1.0)).
+
+/* canReceiveFile */
+/******************/
+interaction_rule(
+  (canReceiveFile(HostRX, FileName, HostTX) :-
+    notSame(HostRX,HostTX),
+    vulExists(HostTX, _, Software, remoteExploit, spoofResponse),
+    networkServiceInfo(HostTX, Software, Protocol, Port),
+    netAccess(HostTX, HostRX, Protocol, Port),
+    execCode(_,HostRX,_),
+    sendsFile(HostTX, _, FileName, Software)),
+ rule_desc('spoofed broadcast querry response allows receiving file intended for other host',1.0)).
+
+interaction_rule(
+  (canReceiveFile(HostRX, FileName, HostTX) :-
+    notSame(HostRX,HostTX),
+    vulExists(HostTX, _, Software, remoteExploit, spoofResponse),
+    networkServiceInfo(HostTX, Software, Protocol, Port),
+    netAccess(HostTX, HostRX, Protocol, Port),
+    attackerLocated(HostRX),
+    sendsFile(HostTX, _, FileName, Software)),
+ rule_desc('spoofed broadcast querry response allows receiving file intended for other host',1.0)).
+
+/* canSendFile */
+/***************/
+interaction_rule(
+  (canSendFile(Src, Tgt, Software) :-
+    attackerLocated(Src),
+    vulExists(Tgt, _, Software, remoteExploit, noAuthentication),
+    networkServiceInfo(Tgt, Software, Protocol, Port),
+    netAccess(Src, Tgt, Protocol, Port),
+    listenForFiles(Tgt, Software)),
+  rule_desc('Send file to listening server w/o authentication', 1.0)).
+
+interaction_rule(
+  (canSendFile(Src, Tgt, Software) :-
+    execCode(_,Src, _),
+    vulExists(Tgt, _, Software, remoteExploit, noAuthentication),
+    networkServiceInfo(Tgt, Software, Protocol, Port),
+    netAccess(Src, Tgt, Protocol, Port),
+    listenForFiles(Tgt, Software)),
+  rule_desc('Compromised host can send file to listening server w/o authentication', 1.0)).
+
+/* canDoS */
+/**********/
+interaction_rule(
+  (canDoS(Src, Tgt, Software) :-
+    vulExists(Tgt, _, Software, remoteExploit, poorCongestionControl),
+    canSendFile(Src, Tgt, Software)),
+  rule_desc('DoS server by overwhelming congestion control', 1.0)).
+
+/* dataTransitsThrough */
+/***********************/
+interaction_rule(
+  (dataTransitsThrough(H, FileName) :-
+    firstHop(TXhost, H), firstHop(RXhost, H),
+    sendsFile(TXhost, RXhost, FileName, TxSoftware),
+    listenForFiles(RXhost, RxSoftware)),
+  rule_desc('Files are going through entity before reaching destination', 1.0)).
+
+/* Man in the Middle */
+/*********************/
+interaction_rule(
+  (manInTheMiddle(H, Tx, Rx) :-
+    sendsFile(Tx, Rx, FileName, _Software),
+    dataTransitsThrough(H, FileName),
+    execCode(_, H, _)),
+  rule_desc('Man in the Middle Situation by network position', 1.0)).
+
+interaction_rule(
+  (manInTheMiddle(H, Tx, Rx) :-
+    execCode(_, H, _),
+    canReceiveFile(H, FileName, Tx),
+    canSendFile(H, Rx, _)),
+  rule_desc('Man in the Middle Situation by compromised host',2.0)).
+
+interaction_rule(
+  (manInTheMiddle(H, Tx, Rx) :-
+    attackerLocated(H),
+    canReceiveFile(H, FileName, Tx),
+    canSendFile(H, Rx, _)),
+  rule_desc('Man in the Middle Situation by compromised host',2.0)).
+
+
+/***********************************/
+/* Overarching Attacker Objectives */
+/***********************************/
+
+/* Defective Parts */
+/*******************/
+interaction_rule(
+  (vulnerableToMakingDefectiveParts(Tgt, Atk) :-
+    attackerLocated(Src),
+    netAccess(Src, Tgt, _Protocol, _Port),
+    execCode(Src, Tgt,_)),
+  rule_desc('Defective parts -- execute code', 1.0)).
+
+interaction_rule(
+  (vulnerableToMakingDefectiveParts(Tgt, H) :-
+    notSame(H, Tgt), notSame(H,Atk),
+    attackerLocated(Atk),
+    netAccess(Atk,H,_Protocol,_Port),
+    pivotPoint(H,Tgt),
+    execCode(H, Tgt,_)),
+  rule_desc('Defective parts -- execute code', 1.0)).
+
+interaction_rule(
+  (vulnerableToMakingDefectiveParts(Tgt, Atk) :-
+    attackerLocated(Atk),
+    notSame(Atk,Tgt),
+    canSendFile(Atk,Tgt,_)),
+  rule_desc('Defective parts -- RX from unauthorized', 1.0)).
+
+interaction_rule(
+  (vulnerableToMakingDefectiveParts(Tgt, Src) :-
+    attackerLocated(Atk),
+    netAccess(Atk,Src,_Protocol,_Port),
+    notSame(Src,Tgt),
+    canSendFile(Src,Tgt,_)),
+  rule_desc('Defective parts -- RX from unauthorized', 1.0)).
+
+interaction_rule(
+  (vulnerableToMakingDefectiveParts(Tgt, Atk) :-
+    attackerLocated(Atk),
+    notSame(Atk,Tgt),
+    manInTheMiddle(Atk, _, Tgt)),
+  rule_desc('Defective parts -- MitM', 1.0)).
+
+interaction_rule(
+  (vulnerableToMakingDefectiveParts(Tgt, H) :-
+    attackerLocated(Atk),
+    netAccess(Atk,H,_Protocol,_Port),
+    notSame(H,Tgt),
+    manInTheMiddle(H, _, Tgt)),
+  rule_desc('Defective parts -- MitM', 1.0)).
+
+
+/* Data Exfiltration */
+/*********************/
+interaction_rule(
+  (vulnerableToDataExfiltration(Tgt, Src) :-
+    attackerLocated(Src), 
+    netAccess(Src, Tgt, _Protocol, _Port),
+    execCode(Src, Tgt,_)),
+  rule_desc('Data exfil -- execute code', 1.0)).
+
+interaction_rule(
+  (vulnerableToDataExfiltration(Tgt, H) :-
+    notSame(H, Tgt), notSame(H,Atk),
+    attackerLocated(Atk),
+    netAccess(Atk,H,_Protocol,_Port),
+    pivotPoint(H,Tgt),
+    execCode(H, Tgt,_)),
+  rule_desc('Susceptible to data exfiltration -- execute code', 1.0)).
+
+interaction_rule(
+  (vulnerableToDataExfiltration(Tgt, Atk) :-
+    attackerLocated(Atk),
+    notSame(Atk,Tgt),
+    canReceiveFile(Atk,_,Tgt)),
+  rule_desc('Data exfil -- TX unauthorized', 1.0)).
+
+interaction_rule(
+  (vulnerableToDataExfiltration(Tgt, H) :-
+    attackerLocated(Atk),
+    netAccess(Atk,H,_Protocol,_Port),
+    notSame(H,Tgt),
+    canReceiveFile(H,_,Tgt)),
+  rule_desc('Data exfil -- TX unauthorized', 1.0)).
+
+interaction_rule(
+  (vulnerableToDataExfiltration(Tgt, Atk) :-
+    attackerLocated(Atk),
+    notSame(Atk,Tgt),
+    manInTheMiddle(Atk,_,Tgt)),
+  rule_desc('Data exfil -- MitM', 1.0)).
+
+interaction_rule(
+  (vulnerableToDataExfiltration(Tgt, H) :-
+    attackerLocated(Atk),
+    netAccess(Atk,H,_Protocol,_Port),
+    notSame(H,Tgt),
+    manInTheMiddle(H,_,Tgt)),
+  rule_desc('Data exfil -- MitM', 1.0)).
+
+/* Denial of Service */
+/*********************/
+interaction_rule(
+  (vulnerableToDoS(Tgt, Src) :-
+    attackerLocated(Src),
+    netAccess(Src, Tgt, _Protocol, _Port),
+    execCode(Src, Tgt, _Perm)),
+  rule_desc('DoS -- execute code', 1.0)).
+
+interaction_rule(
+  (vulnerableToDoS(Tgt, H) :-
+    notSame(H, Tgt), notSame(H,Atk),
+    attackerLocated(Atk),
+    netAccess(Atk,H,_Protocol,_Port),
+    pivotPoint(H,Tgt),
+    execCode(H, Tgt, _Perm)),
+  rule_desc('DoS -- execute code', 1.0)).
+
+interaction_rule(
+  (vulnerableToDoS(Tgt, Atk) :-
+    attackerLocated(Atk),
+    notSame(Atk,Tgt),
+    canDoS(Atk, Tgt, _)),
+  rule_desc('DoS -- DoS', 1.0)).
+
+interaction_rule(
+  (vulnerableToDoS(Tgt, Src) :-
+    attackerLocated(Atk),
+    netAccess(Atk,Src,_Protocol,_Port),
+    notSame(Src,Tgt),
+    canDoS(Src, Tgt, _)),
+  rule_desc('DoS -- DoS', 1.0)).
+
+interaction_rule(
+  (vulnerableToDoS(Tgt, Atk) :-
+    attackerLocated(Atk),
+    notSame(Atk,Tgt),
+    manInTheMiddle(Atk,_,Tgt)),
+  rule_desc('DoS -- MitM', 1.0)).
+
+interaction_rule(
+  (vulnerableToDoS(Tgt, H) :-
+    attackerLocated(Atk),
+    netAccess(Atk,H,_Protocol,_Port),
+    notSame(H,Tgt),
+    manInTheMiddle(H,_,Tgt)),
+  rule_desc('DoS -- MitM', 1.0)).
+
+% Unencrypted traffic
+% -- Replay, credential sniffing
+
