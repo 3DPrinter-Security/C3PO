@@ -1,0 +1,53 @@
+{
+    "description": "IoT Testbed Environment",
+    "location": "localNet",
+    "printers2Eval": ["printer"],
+    "controlPC_List": ["controlPC"],
+    "devCats": ["printers", "controlPCs", "other"],
+    "switches": ["wiFi", "switch"],
+    "topology":{
+	"wiFi": {
+	    "printers":["printer"],
+	    "controlPCs": ["controlPC"],
+	    "other": ["camera", "aNAS", "smartPlug", "localNet"]
+	},
+	"switch":{
+	    "controlPCs": ["controlPC"],
+	    "other": ["internet"]
+	}
+    },
+    "vulnerabilities":{
+	"printers": {
+	    "all": [["ReceiveFile", "Print_Server", "remoteExploit", "noAuthentication"], ["only1User", "Print_Server", "remoteExploit", "poorCongestionControl"]]
+	},
+	"controlPCs": {
+	    "all": [["BroadcastQuerry", "ARP", "remoteExploit", "spoofResponse"], ["badUSB", "AutoRun", "remoteExploit", "privEscalation"], ["maliciousLink", "InternetExplorer", "remoteExploit", "privEscalation"]]
+	},
+	"other": {
+	    "aNAS": [["SambaCry", "Samba", "remoteExploit", "privEscalation"]],
+	    "camera": [["DefaultCredentials", "Login", "remoteExploit", "privEscalation"]]
+	}
+    },
+    "properties":{
+	"printers": {
+	    "all": {
+		"netSvc": [["Print_Server", "tcp", "8899"]],
+		"misc": [["listenForFiles", "Print_Server"]]
+	    }
+	},
+	"controlPCs": {
+	    "all": {
+		"netSvc": [["ARP", "_", "_"]],
+		"misc": [["sendsFile", "printer", "3D_Printer_Build_Job", "ARP"], ["installed", "AutoRun"], ["installed", "InternetExplorer"]]
+	    }
+	},
+	"other": {
+	    "aNAS": {
+		"netSvc": [["Samba", "tcp", "139"]]
+	    },
+	    "camera": {
+		"netSvc": [["Login", "tcp", "80"]]
+	    }
+	}
+    }
+}

@@ -1,4 +1,6 @@
-Required packages:
+To check all dependencies run check_all_dep.sh. For determining only a subset, select the script for the particular module (i.e. deploy for network deployment analysis, or individ for individual device). To install the needed dependencies, run the applicable get_* script.
+
+List of Required packages:
 - python
 - pip
   -- inquirer

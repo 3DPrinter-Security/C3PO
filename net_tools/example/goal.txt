@@ -1,0 +1,3 @@
+vulnerableToDataExfiltration(printer)
+vulnerableToDoS(printer)
+vulnerableToMakingDefectiveParts(printer)
